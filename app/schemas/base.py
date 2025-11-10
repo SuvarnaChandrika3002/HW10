@@ -23,7 +23,7 @@ class PasswordMixin(BaseModel):
     def validate_password(cls, values: dict) -> dict:
         password = values.get("password")
         if not password:
-            raise ValidationError("Password is required", model=cls) # pragma: no cover
+            raise ValidationError("Password is required", model=cls) 
         if len(password) < 6:
             raise ValueError("Password must be at least 6 characters long")
         if not any(char.isupper() for char in password):

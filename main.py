@@ -9,35 +9,29 @@ from app.operations import add, subtract, multiply, divide  # Ensure correct imp
 import uvicorn
 import logging
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Setup templates directory
 templates = Jinja2Templates(directory="templates")
 
-# Pydantic model for request data
 class OperationRequest(BaseModel):
     a: float = Field(..., description="The first number")
     b: float = Field(..., description="The second number")
 
-    @field_validator('a', 'b')  # Correct decorator for Pydantic 1.x
+    @field_validator('a', 'b')  
     def validate_numbers(cls, value):
         if not isinstance(value, (int, float)):
             raise ValueError('Both a and b must be numbers.')
         return value
 
-# Pydantic model for successful response
 class OperationResponse(BaseModel):
     result: float = Field(..., description="The result of the operation")
 
-# Pydantic model for error response
 class ErrorResponse(BaseModel):
     error: str = Field(..., description="Error message")
 
-# Custom Exception Handlers
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     logger.error(f"HTTPException on {request.url.path}: {exc.detail}")
@@ -48,7 +42,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    # Extracting error messages
     error_messages = "; ".join([f"{err['loc'][-1]}: {err['msg']}" for err in exc.errors()])
     logger.error(f"ValidationError on {request.url.path}: {error_messages}")
     return JSONResponse(

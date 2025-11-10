@@ -15,7 +15,7 @@ class UserResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)  # Enable mapping from ORM objects
+    model_config = ConfigDict(from_attributes=True)  
 
 
 class Token(BaseModel):

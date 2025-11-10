@@ -72,12 +72,10 @@ class User(Base):
     def register(cls, db, user_data: Dict[str, Any]) -> "User":
         """Register a new user with validation."""
         try:
-            # Validate password length first
             password = user_data.get('password', '')
-            if len(password) < 6:  # Strictly less than 6 characters
+            if len(password) < 6: 
                 raise ValueError("Password must be at least 6 characters long")
             
-            # Check if email/username exists
             existing_user = db.query(cls).filter(
                 (cls.email == user_data.get('email')) |
                 (cls.username == user_data.get('username'))
@@ -86,10 +84,8 @@ class User(Base):
             if existing_user:
                 raise ValueError("Username or email already exists")
 
-            # Validate using Pydantic schema
             user_create = UserCreate.model_validate(user_data)
             
-            # Create new user instance
             new_user = cls(
                 first_name=user_create.first_name,
                 last_name=user_create.last_name,
@@ -105,7 +101,7 @@ class User(Base):
             return new_user
             
         except ValidationError as e:
-            raise ValueError(str(e)) # pragma: no cover
+            raise ValueError(str(e)) 
         except ValueError as e:
             raise e
 
@@ -117,12 +113,11 @@ class User(Base):
         ).first()
 
         if not user or not user.verify_password(password):
-            return None # pragma: no cover
+            return None 
 
         user.last_login = datetime.utcnow()
         db.commit()
 
-        # Create token response using Pydantic models
         user_response = UserResponse.model_validate(user)
         token_response = Token(
             access_token=cls.create_access_token({"sub": str(user.id)}),

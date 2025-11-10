@@ -1,5 +1,3 @@
-# tests/auth/test_dependencies.py
-
 import pytest
 from unittest.mock import MagicMock, patch, ANY
 from fastapi import HTTPException, status
@@ -9,7 +7,6 @@ from app.models.user import User
 from uuid import uuid4
 from datetime import datetime
 
-# Sample user data for testing
 sample_user = User(
     id=uuid4(),
     username="testuser",
@@ -34,18 +31,15 @@ inactive_user = User(
     updated_at=datetime.utcnow()
 )
 
-# Fixture for mocking the database session
 @pytest.fixture
 def mock_db():
     return MagicMock()
 
-# Fixture for mocking token verification
 @pytest.fixture
 def mock_verify_token():
     with patch.object(User, 'verify_token') as mock:
         yield mock
 
-# Test get_current_user with valid token and existing user
 def test_get_current_user_valid_token_existing_user(mock_db, mock_verify_token):
     mock_verify_token.return_value = sample_user.id
     mock_db.query.return_value.filter.return_value.first.return_value = sample_user
@@ -65,11 +59,9 @@ def test_get_current_user_valid_token_existing_user(mock_db, mock_verify_token):
 
     mock_verify_token.assert_called_once_with("validtoken")
     mock_db.query.assert_called_once_with(User)
-    # Use ANY to ignore the specific BinaryExpression instance
     mock_db.query.return_value.filter.assert_called_once_with(ANY)
     mock_db.query.return_value.filter.return_value.first.assert_called_once()
 
-# Test get_current_user with invalid token
 def test_get_current_user_invalid_token(mock_db, mock_verify_token):
     mock_verify_token.return_value = None
 
@@ -82,7 +74,6 @@ def test_get_current_user_invalid_token(mock_db, mock_verify_token):
     mock_verify_token.assert_called_once_with("invalidtoken")
     mock_db.query.assert_not_called()
 
-# Test get_current_user with valid token but non-existent user
 def test_get_current_user_valid_token_nonexistent_user(mock_db, mock_verify_token):
     mock_verify_token.return_value = sample_user.id
     mock_db.query.return_value.filter.return_value.first.return_value = None
@@ -98,7 +89,6 @@ def test_get_current_user_valid_token_nonexistent_user(mock_db, mock_verify_toke
     mock_db.query.return_value.filter.assert_called_once_with(ANY)
     mock_db.query.return_value.filter.return_value.first.assert_called_once()
 
-# Test get_current_active_user with active user
 def test_get_current_active_user_active(mock_db, mock_verify_token):
     mock_verify_token.return_value = sample_user.id
     mock_db.query.return_value.filter.return_value.first.return_value = sample_user
@@ -109,7 +99,6 @@ def test_get_current_active_user_active(mock_db, mock_verify_token):
     assert isinstance(active_user, UserResponse)
     assert active_user.is_active is True
 
-# Test get_current_active_user with inactive user
 def test_get_current_active_user_inactive(mock_db, mock_verify_token):
     mock_verify_token.return_value = inactive_user.id
     mock_db.query.return_value.filter.return_value.first.return_value = inactive_user
