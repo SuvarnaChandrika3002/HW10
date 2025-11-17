@@ -21,7 +21,7 @@ jobs:
         env:
           POSTGRES_USER: user
           POSTGRES_PASSWORD: password
-          POSTGRES_DB: mytestdb  
+          POSTGRES_DB: mytestdb
         ports:
           - 5432:5432
         options: >-
@@ -30,41 +30,54 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-python@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          
+
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      
+
       - name: Install dependencies
         env:
           DATABASE_URL: postgresql://user:password@localhost:5432/mytestdb
         run: |
           python -m venv venv
           source venv/bin/activate
-          pip install --upgrade pip
-          pip install --use-deprecated=legacy-resolver -r requirements.txt
-          playwright install  # if you use Playwright for e2e tests
-      
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Install Playwright Python package (so the playwright CLI is available)
+          pip install playwright
+
+      - name: Install Playwright browsers + deps
+        env:
+          DATABASE_URL: postgresql://user:password@localhost:5432/mytestdb
+        run: |
+          # activate the same venv created earlier
+          source venv/bin/activate
+          # Install browsers and required OS deps for Playwright
+          python -m playwright install --with-deps
+
       - name: Run tests
         env:
           DATABASE_URL: postgresql://user:password@localhost:5432/mytestdb
         run: |
+          # activate the venv
           source venv/bin/activate
-          
+
           # 1) Unit tests
           pytest tests/unit/ --cov=src --junitxml=test-results/junit.xml
-          
+
           # 2) Integration tests
           pytest tests/integration/
-          
+
           # 3) E2E or other tests
           pytest tests/e2e/
 
@@ -74,10 +87,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Build image
         run: docker build -t app:test .
-      
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -86,7 +99,7 @@ jobs:
           exit-code: '0'          # <-- changed from 1 to 0 to NOT fail on vulnerabilities
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
-  
+
   deploy:
     if: github.ref == 'refs/heads/main' && github.event.inputs.skip_security != 'true'
     needs: security
@@ -94,14 +107,14 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: docker/setup-buildx-action@v3
-      
+
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          
+
       - uses: docker/build-push-action@v5
         with:
           push: true
