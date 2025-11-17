@@ -26,7 +26,7 @@ def get_current_user(
     if user is None:
         raise credentials_exception
         
-    return UserResponse.model_validate(user)  # Updated from from_orm
+    return UserResponse.model_validate(user)  
 
 def get_current_active_user(
     current_user: UserResponse = Depends(get_current_user)
