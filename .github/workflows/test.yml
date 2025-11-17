@@ -39,9 +39,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install system packages (libpq headers for psycopg2, optional)
-        # Installing these is optional if you always use psycopg2-binary.
-        # They are helpful if you use psycopg2 (source) in requirements.txt.
+      - name: Install system packages (optional for psycopg2)
         run: |
           sudo apt-get update
           sudo apt-get install -y libpq-dev build-essential
@@ -49,25 +47,35 @@ jobs:
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies
+      - name: Install dependencies + test deps
         env:
           DATABASE_URL: postgresql://user:password@localhost:5432/mytestdb
         run: |
           python -m venv venv
           source venv/bin/activate
           python -m pip install --upgrade pip
-          # Install everything from requirements.txt (make sure requirements.txt includes test deps)
-          pip install -r requirements.txt
 
-          # Ensure Playwright package is available
+          # Install runtime / primary deps
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+          # Install dev/test dependencies if you track them; otherwise ensure httpx is present
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            # httpx is required by starlette/fastapi TestClient for integration tests
+            pip install httpx
+            # install common test packages if not in requirements
+            pip install pytest pytest-cov
+          fi
+
+          # Ensure Playwright Python package and DB adapter are available
           pip install playwright
-
-          # Ensure psycopg2 is available. If you prefer the binary wheel (recommended for CI),
-          # add `psycopg2-binary` to requirements.txt or install here:
           pip install psycopg2-binary
 
       - name: Install Playwright browsers + deps
@@ -84,9 +92,9 @@ jobs:
           source venv/bin/activate
 
           # 1) Unit tests
-          pytest tests/unit/ --cov=src --junitxml=test-results/junit.xml || true
+          pytest tests/unit/ --cov=src --junitxml=test-results/junit.xml
 
-          # 2) Integration tests (will error / fail workflow if tests fail)
+          # 2) Integration tests (FastAPI + TestClient)
           pytest tests/integration/
 
           # 3) E2E or other tests
