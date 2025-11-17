@@ -1,8 +1,8 @@
 # app/models/user.py
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 from typing import Optional, Dict, Any
-
+from sqlalchemy import or_
 from sqlalchemy import Column, String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import declarative_base
@@ -19,6 +19,7 @@ import bcrypt as _bcrypt_lib
 _original_bcrypt_hashpw = _bcrypt_lib.hashpw
 _original_bcrypt_checkpw = _bcrypt_lib.checkpw
 
+
 def _safe_bcrypt_hashpw(password_bytes, salt):
     # password_bytes expected as bytes; truncate to 72 bytes
     if not isinstance(password_bytes, (bytes, bytearray)):
@@ -26,11 +27,13 @@ def _safe_bcrypt_hashpw(password_bytes, salt):
     safe = password_bytes[:72]
     return _original_bcrypt_hashpw(safe, salt)
 
+
 def _safe_bcrypt_checkpw(password_bytes, hashed):
     if not isinstance(password_bytes, (bytes, bytearray)):
         password_bytes = str(password_bytes).encode("utf-8")
     safe = password_bytes[:72]
     return _original_bcrypt_checkpw(safe, hashed)
+
 
 # apply the monkeypatch
 _bcrypt_lib.hashpw = _safe_bcrypt_hashpw
@@ -52,6 +55,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _original_pwd_hash = pwd_context.hash
 _original_pwd_verify = pwd_context.verify
 
+
 def _truncate_to_72_str(secret) -> str:
     """
     Ensure we return a str truncated to 72 bytes (utf-8) so passlib/bcrypt never sees >72 bytes.
@@ -62,15 +66,19 @@ def _truncate_to_72_str(secret) -> str:
         b = str(secret).encode("utf-8")
         if len(b) > MAX_BCRYPT_BYTES:
             b = b[:MAX_BCRYPT_BYTES]
+    # decode ignoring any partial multibyte sequences
     return b.decode("utf-8", errors="ignore")
+
 
 def _safe_pwd_hash(secret, *args, **kwargs):
     safe = _truncate_to_72_str(secret)
     return _original_pwd_hash(safe, *args, **kwargs)
 
+
 def _safe_pwd_verify(secret, stored_hash, *args, **kwargs):
     safe = _truncate_to_72_str(secret)
     return _original_pwd_verify(safe, stored_hash, *args, **kwargs)
+
 
 # replace the context methods with safe wrappers (module-level)
 pwd_context.hash = _safe_pwd_hash
@@ -109,9 +117,7 @@ class User(Base):
         Hash a password safely: truncate to bcrypt limit and then hash via passlib.
         Returns the hash string.
         """
-        # ensure truncated the same way as wrapper (keeps behavior consistent)
-        from app.models.user import _truncate_to_72_str as _t  # local import to avoid circular top-level references
-        safe_pw = _t(password)
+        safe_pw = _truncate_to_72_str(password)
         return pwd_context.hash(safe_pw)
 
     def verify_password(self, plain_password: str) -> bool:
@@ -121,8 +127,7 @@ class User(Base):
         """
         if not self.password:
             return False
-        from app.models.user import _truncate_to_72_str as _t
-        safe_pw = _t(plain_password)
+        safe_pw = _truncate_to_72_str(plain_password)
         try:
             return pwd_context.verify(safe_pw, self.password)
         except Exception:
@@ -188,7 +193,15 @@ class User(Base):
 
     @classmethod
     def authenticate(cls, db, username: str, password: str) -> Optional[Dict[str, Any]]:
-        """Authenticate user and return token with user data."""
+        """
+        Authenticate user and return token with user data.
+
+        This will:
+          - look up the user by username OR email
+          - verify the password
+          - update user.last_login (persisting the value so tests / callers can refresh)
+          - return a dict payload containing token + user info (Token model dump)
+        """
         user = db.query(cls).filter(
             (cls.username == username) | (cls.email == username)
         ).first()
@@ -202,12 +215,21 @@ class User(Base):
         if prev is None:
             new_ts = now
         else:
+            # ensure monotonic increase (tiny delta), use now if it's greater than prev + 1 microsecond
             candidate = prev + timedelta(microseconds=1)
             new_ts = now if now > candidate else candidate
-            user.last_login = new_ts
 
-        # Persist the change - commit here to reflect last_login in DB for tests
+        # assign and persist
+        user.last_login = new_ts
+        db.add(user)
+        # commit here so callers/tests that refresh the instance will see the change
         db.commit()
+        # refresh to ensure SQLAlchemy instance is up-to-date
+        try:
+            db.refresh(user)
+        except Exception:
+            # ignore refresh failure in case the session semantics differ
+            pass
 
         user_response = UserResponse.model_validate(user)
         token_response = Token(
